@@ -1,9 +1,11 @@
-type Stream<T> = (pattern: Pattern<T>) => any
-type Pattern<T> = {
+import { not } from '@/src/combinator'
+
+export type Stream<T> = (pattern: Pattern<T>) => any
+export type Pattern<T> = {
   empty: () => any
   cons: (head: T, tail: Thunk<T>) => any
 }
-type Thunk<T> = () => Stream<T>
+export type Thunk<T> = () => Stream<T>
 
 export const stream = {
   match: (data: Stream<number>, pattern: Pattern<number>) => data(pattern),
@@ -33,7 +35,42 @@ export const stream = {
         }
       },
     }),
+  filter:
+    (predicate: (x: number) => boolean) =>
+    (aStream: Stream<number>): Stream<number> =>
+      stream.match(aStream, {
+        empty: () => stream.empty(),
+        cons: (head: number, tailThunk: Thunk<number>) => {
+          if (predicate(head)) {
+            // 条件に合致する場合はheadを含める
+            return stream.cons(head, () =>
+              stream.filter(predicate)(tailThunk())
+            )
+          } else {
+            return stream.filter(predicate)(tailThunk())
+          }
+        },
+      }),
+  remove:
+    (predicate: (x: number) => boolean) =>
+    (aStream: Stream<number>): Stream<number> =>
+      stream.filter(not(predicate))(aStream),
 }
+
+const multipleOf = (n: number) => (m: number) => n % m === 0
+
+// sieveで生成されるStreamの後尾は、関数適用時にさらにsieveでStreamを生成する
+// 後続のsieveはheadを束縛している
+export const sieve = (aStream: Stream<number>): Stream<number> =>
+  stream.match(aStream, {
+    empty: () => null,
+    cons: (head: number, tailThunk: Thunk<number>): Stream<number> =>
+      stream.cons(head, () =>
+        sieve(
+          stream.remove((item: number) => multipleOf(item)(head))(tailThunk())
+        )
+      ),
+  })
 
 type List<T> = (pattern: Pattern<T>) => any
 type ListPattern<T> = {
@@ -62,3 +99,5 @@ export const list = {
 
 export const enumFrom = (n: number): Stream<number> =>
   stream.cons(n, () => enumFrom(n + 1))
+
+export const primes = sieve(enumFrom(2))

@@ -49,6 +49,15 @@ export const map = (alist: List, transform: (x: number) => number): List =>
       cons(transform(head), map(tail, transform)),
   })
 
+export const curriedMap =
+  (alist: List) =>
+  (transform: (x: number) => number): List =>
+    match(alist, {
+      empty: () => empty(), // 終了条件
+      cons: (head: number, tail: List) =>
+        cons(transform(head), map(tail, transform)),
+    })
+
 export const toArray = (alist: List): number[] => {
   const toArrayHelper = (alist: List, accumulator: number[]): number[] =>
     match(alist, {
@@ -57,6 +66,9 @@ export const toArray = (alist: List): number[] => {
     })
   return toArrayHelper(alist, [])
 }
+
+export const sum = (alist: List) =>
+  toArray(alist).reduce((acc, cur) => acc + cur, 0)
 
 // 複利計算を再帰で行う
 // 再帰では常に蓄積変数の存在を意識したいが、
