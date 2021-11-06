@@ -41,12 +41,17 @@ export const stream = {
       stream.match(aStream, {
         empty: () => stream.empty(),
         cons: (head: number, tailThunk: Thunk<number>) => {
+          // 束縛されたpredicateはこの先も恒久的に利用される
           if (predicate(head)) {
             // 条件に合致する場合はheadを含める
-            return stream.cons(head, () =>
-              stream.filter(predicate)(tailThunk())
+            // 合致する場合は、後尾の再帰filterはあくまで遅延評価されるまでは実行されない
+            // つまり、filterの再帰は一旦ストップする
+            return stream.cons(
+              head,
+              () => stream.filter(predicate)(tailThunk()) // tailThunkを評価しているのでStreamが生成される
             )
           } else {
+            // 合致しない場合は、再帰filterが即時評価される
             return stream.filter(predicate)(tailThunk())
           }
         },
@@ -57,17 +62,31 @@ export const stream = {
       stream.filter(not(predicate))(aStream),
 }
 
-const multipleOf = (n: number) => (m: number) => n % m === 0
+// const multipleOf = (n: number) => (m: number) => n % m === 0
+const multipleOf =
+  (n: number) =>
+  (m: number): boolean => {
+    console.log(`${n} / ${m}`)
+    return n % m === 0
+  }
 
-// sieveで生成されるStreamの後尾は、関数適用時にさらにsieveでStreamを生成する
-// 後続のsieveはheadを束縛している
+// sieve: cons(head, {{ headで割り切れる数を除外するStream }})
+// 再帰関数sieveは、filterの再帰部分の即時評価がなされない、つまりpredicateがtrueになってから評価される
+// 実行の様子:
+// filter(x, y): 除数xが束縛されたenumFrom(y)ストリームに対するfilter（で生成されるStream）
+// sieve(x, S): ???
+// (2, sieve(3, filter(2, 4)))
+// (3, sieve(5, filter(3, filter(2, 6))))
+// (5, sieve(7, filter(5, filter(3, filter(2, 8)))))
+// (7, sieve(11, filter(7, filter(5, filter(3, filter(2, 12))))))
 export const sieve = (aStream: Stream<number>): Stream<number> =>
   stream.match(aStream, {
     empty: () => null,
     cons: (head: number, tailThunk: Thunk<number>): Stream<number> =>
       stream.cons(head, () =>
         sieve(
-          stream.remove((item: number) => multipleOf(item)(head))(tailThunk())
+          // headを除数として束縛する
+          stream.remove((item: number) => multipleOf(item)(head))(tailThunk()) // headで割り切れる数を除外するStream
         )
       ),
   })
@@ -101,3 +120,34 @@ export const enumFrom = (n: number): Stream<number> =>
   stream.cons(n, () => enumFrom(n + 1))
 
 export const primes = sieve(enumFrom(2))
+
+// 継続による反復処理からの脱出
+// break文を使わない中断
+export const find = (
+  aStream: Stream<number>,
+  predicate: (e: number) => boolean,
+  continuesOnFailure: Function,
+  continuesOnSuccess: Function
+): number | null =>
+  stream.match(aStream, {
+    empty: () => continuesOnSuccess(null),
+    cons: (head: number, tailThunk: Thunk<number>) => {
+      if (predicate(head)) {
+        return continuesOnSuccess(head)
+      } else {
+        return continuesOnFailure(
+          tailThunk(),
+          predicate,
+          continuesOnFailure,
+          continuesOnSuccess
+        )
+      }
+    },
+  })
+export const continuesOnSuccess = (x: number) => x // identity
+export const continuesOnFailure = (
+  aStream: Stream<number>,
+  predicate: (e: number) => boolean,
+  continuesOnRecursion: Function,
+  escapesFromRecursion: Function
+) => find(aStream, predicate, continuesOnRecursion, escapesFromRecursion)

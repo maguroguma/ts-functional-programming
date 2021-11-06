@@ -4,7 +4,7 @@
 
 // Listはpatternオブジェクトを引数に取る関数
 // (pattern) => pattern.Xxx
-type List = (pattern: Pattern) => any
+export type List = (pattern: Pattern) => any
 
 type Pattern = {
   empty: () => any
@@ -85,3 +85,17 @@ export const compoundInterest = (
     return compoundInterest(init, rate, year - 1) * (1 + rate)
   }
 }
+
+// （右）畳み込み: 再帰を抽象化
+// 再帰部分は右オペランドであることに注意
+// 型定義を変えれば、findやreverseも実装できる
+type FoldCallback = (n: number) => (m: number) => number
+export const foldr =
+  (alist: List) =>
+  (accumulator: number) =>
+  (callback: FoldCallback): number =>
+    match(alist, {
+      empty: () => accumulator,
+      cons: (head: number, tail: List) =>
+        callback(head)(foldr(tail)(accumulator)(callback)),
+    })
